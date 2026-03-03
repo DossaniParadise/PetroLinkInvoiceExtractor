@@ -1,1 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice → Clipboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink: #1a1a1a;
+  --paper: #f5f0e8;
+  --paper2: #ede8df;
+  --rule: #d4cdc0;
+  --amber: #c8860a;
+  --amber-light: #f5a623;
+  --green: #2d6a4f;
+  --green-light: #52b788;
+  --red: #9b2226;
+  --mono: 'JetBrains Mono', monospace;
+  --display: 'Syne', sans-serif;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--display);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px 60px;
+  background-image: 
+    repeating-linear-gradient(0deg, transparent, transparent 27px, var(--rule) 27px, var(--rule) 28px);
+}
+
+/* Knock the grid off on the main card areas */
+.card { background: var(--paper); }
+
+h1 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 40px;
+  font-family: var(--mono);
+}
+
+.container {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Drop Zone ── */
+.drop-zone {
+  border: 2px dashed var(--rule);
+  border-radius: 4px;
+  padding: 44px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--paper);
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--amber);
+  background: rgba(200,134,10,0.04);
+}
+.drop-zone input { display: none; }
+
+.drop-icon {
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 12px;
+  display: block;
+}
+.drop-title {
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.drop-hint {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: #888;
+}
+
+/* ── State: loading ── */
+.loading-state {
+  text-align: center;
+  padding: 40px 20px;
+  display: none;
+}
+.spinner-ring {
+  width: 40px; height: 40px;
+  border: 3px solid var(--rule);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-msg {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: #888;
+}
+
+/* ── Result Panel ── */
+.result-panel {
+  display: none;
+  flex-direction: column;
+  gap: 0;
+  border: 1.5px solid var(--ink);
+}
+
+.result-header {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.result-header .inv-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: 0.6;
+}
+.result-header .store-name {
+  font-size: 13px;
+  font-weight: 700;
+  flex: 1;
+}
+.result-header .inv-date {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber-light);
+}
+
+.fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: none;
+}
+
+.field-row {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.field-row:nth-child(even) { border-right: none; }
+
+.field-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #999;
+  font-family: var(--mono);
+}
+.field-value {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.field-value.null-val { color: #ccc; font-weight: 400; font-size: 13px; }
+
+/* Excel row preview */
+.row-preview {
+  background: var(--paper2);
+  border-top: 1.5px solid var(--ink);
+  padding: 12px 16px;
+}
+.row-preview-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #999;
+  font-family: var(--mono);
+  margin-bottom: 8px;
+}
+.row-cells {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+}
+.cell {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-right: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-align: center;
+  min-width: 60px;
+}
+.cell:last-child { border-right: none; }
+.cell .col-letter {
+  display: block;
+  font-size: 8px;
+  color: #aaa;
+  margin-bottom: 2px;
+}
+.cell .col-val {
+  font-weight: 600;
+  color: var(--ink);
+}
+.cell.empty .col-val { color: #ccc; }
+
+/* Copy button */
+.copy-btn {
+  width: 100%;
+  padding: 16px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.copy-btn:hover { background: #333; }
+.copy-btn.copied {
+  background: var(--green);
+}
+.copy-btn .btn-text { position: relative; z-index: 1; }
+
+.reset-link {
+  text-align: center;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: #aaa;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px;
+}
+.reset-link:hover { color: var(--red); }
+
+.error-msg {
+  background: rgba(155,34,38,0.08);
+  border: 1px solid var(--red);
+  border-radius: 4px;
+  padding: 14px 16px;
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--red);
+  display: none;
+}
+
+/* Instructions note */
+.note {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: #aaa;
+  text-align: center;
+  line-height: 1.7;
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+  margin-top: 4px;
+}
+.note strong { color: #666; }
+</style>
+</head>
+<body>
+
+<h1>Invoice → Clipboard</h1>
+<p class="subtitle">Petro-Link PDF extractor</p>
+
+<div class="container">
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('pdfInput').click()">
+    <input type="file" id="pdfInput" accept=".pdf">
+    <span class="drop-icon">📄</span>
+    <div class="drop-title">Drop invoice PDF here</div>
+    <div class="drop-hint">or click to browse · single file</div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-state" id="loadingState">
+    <div class="spinner-ring"></div>
+    <div class="loading-msg" id="loadingMsg">Reading invoice...</div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-msg" id="errorMsg"></div>
+
+  <!-- Result -->
+  <div class="result-panel" id="resultPanel">
+
+    <div class="result-header">
+      <span class="inv-id" id="rInvNum"></span>
+      <span class="store-name" id="rStoreName"></span>
+      <span class="inv-date" id="rDate"></span>
+    </div>
+
+    <div class="fields-grid">
+      <div class="field-row"><span class="field-label">Date</span><span class="field-value" id="fDate">—</span></div>
+      <div class="field-row"><span class="field-label">Gas (gal)</span><span class="field-value" id="fGas">—</span></div>
+      <div class="field-row"><span class="field-label">Diesel (gal)</span><span class="field-value" id="fDiesel">—</span></div>
+      <div class="field-row"><span class="field-label">PPD</span><span class="field-value" id="fPPD">—</span></div>
+      <div class="field-row"><span class="field-label">TX Gas Tax</span><span class="field-value" id="fTXGas">—</span></div>
+      <div class="field-row"><span class="field-label">TX Diesel Tax</span><span class="field-value" id="fTXDiesel">—</span></div>
+      <div class="field-row"><span class="field-label">Fed Gas Tax</span><span class="field-value" id="fFedGas">—</span></div>
+      <div class="field-row"><span class="field-label">Fed Diesel Tax</span><span class="field-value" id="fFedDiesel">—</span></div>
+    </div>
+
+    <div class="row-preview">
+      <div class="row-preview-label">Excel row (C → K) — ready to paste</div>
+      <div class="row-cells" id="rowCells"></div>
+    </div>
+
+    <button class="copy-btn" id="copyBtn" onclick="copyRow()">
+      <span class="btn-text">⌘ Copy Row to Clipboard</span>
+    </button>
+
+  </div>
+
+  <div class="reset-link" id="resetLink" style="display:none" onclick="reset()">← Process another invoice</div>
+
+  <div class="note">
+    Click copy, click your target cell in Excel,<br>then <strong>Ctrl+V</strong> (or Cmd+V) to paste the row.
+  </div>
+
+</div>
+
+<script>
+let extractedData = null;
+
+// ── Drag & Drop ──
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith('.pdf')) processFile(f);
+});
+document.getElementById('pdfInput').addEventListener('change', e => {
+  if (e.target.files[0]) processFile(e.target.files[0]);
+});
+
+// ── Process ──
+async function processFile(file) {
+  showLoading('Reading PDF...');
+  hideError();
+
+  try {
+    const b64 = await toBase64(file);
+    showLoading('Extracting data with AI...');
+    const data = await callClaude(b64);
+    extractedData = data;
+    showResult(data);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('Could not read file'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function callClaude(b64) {
+  const prompt = `Extract data from this Petro-Link fuel invoice. Return ONLY valid JSON, no markdown fences, nothing else.
+
+{
+  "invoice_number": "string",
+  "invoice_date": "string in M/D/YY format e.g. 2/1/26",
+  "store_name": "string - full customer name",
+  "total_gas_gallons": number or null,
+  "total_diesel_gallons": number or null,
+  "ppd": number or null,
+  "texas_gas_tax": number or null,
+  "texas_diesel_tax": number or null,
+  "fed_gas_tax": number or null,
+  "fed_diesel_tax": number or null
+}
+
+FIELD NOTES:
+- total_gas_gallons: Quantity from REGULAR UNLEADED line
+- total_diesel_gallons: Quantity from DIESEL or DIESEL-BIO line
+- ppd: The dollar amount on the TEXAS DELIVERY FEE line (e.g. 6.95), or null if absent
+- texas_gas_tax: State Gas Tax "Total" column from Tax Summary section
+- texas_diesel_tax: State Diesel Tax "Total" column from Tax Summary section  
+- fed_gas_tax: Fed Gas Tax "Total" column from Tax Summary section
+- fed_diesel_tax: Fed Diesel Tax "Total" column from Tax Summary section
+- All numbers as plain numbers, no $ signs or commas`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || 'API error');
+  const text = json.content.map(c => c.text || '').join('').trim();
+  return JSON.parse(text);
+}
+
+// ── Display ──
+function showResult(d) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('dropZone').style.display = 'none';
+
+  document.getElementById('rInvNum').textContent = `#${d.invoice_number || '?'}`;
+  document.getElementById('rStoreName').textContent = d.store_name || 'Unknown';
+  document.getElementById('rDate').textContent = d.invoice_date || '';
+
+  setField('fDate',      d.invoice_date);
+  setField('fGas',       d.total_gas_gallons);
+  setField('fDiesel',    d.total_diesel_gallons);
+  setField('fPPD',       d.ppd);
+  setField('fTXGas',     d.texas_gas_tax);
+  setField('fTXDiesel',  d.texas_diesel_tax);
+  setField('fFedGas',    d.fed_gas_tax);
+  setField('fFedDiesel', d.fed_diesel_tax);
+
+  // Col C through K = Date, Gas, Diesel, PPD, SplitLot, TXGasTax, TXDieselTax, FedGasTax, FedDieselTax
+  const cols = [
+    { col: 'C', val: d.invoice_date },
+    { col: 'D', val: d.total_gas_gallons },
+    { col: 'E', val: d.total_diesel_gallons },
+    { col: 'F', val: d.ppd },
+    { col: 'G', val: null },           // Split lot — blank
+    { col: 'H', val: d.texas_gas_tax },
+    { col: 'I', val: d.texas_diesel_tax },
+    { col: 'J', val: d.fed_gas_tax },
+    { col: 'K', val: d.fed_diesel_tax },
+  ];
+
+  const rowCells = document.getElementById('rowCells');
+  rowCells.innerHTML = '';
+  cols.forEach(({ col, val }) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (val == null ? ' empty' : '');
+    cell.innerHTML = `<span class="col-letter">${col}</span><span class="col-val">${val ?? ''}</span>`;
+    rowCells.appendChild(cell);
+  });
+
+  document.getElementById('resultPanel').style.display = 'flex';
+  document.getElementById('resetLink').style.display = 'block';
+}
+
+function setField(id, val) {
+  const el = document.getElementById(id);
+  if (val == null || val === '') {
+    el.textContent = '—';
+    el.classList.add('null-val');
+  } else {
+    el.textContent = val;
+    el.classList.remove('null-val');
+  }
+}
+
+function showLoading(msg) {
+  document.getElementById('loadingState').style.display = 'block';
+  document.getElementById('loadingMsg').textContent = msg;
+  document.getElementById('resultPanel').style.display = 'none';
+  document.getElementById('resetLink').style.display = 'none';
+}
+
+function hideError() {
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+function showError(msg) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('dropZone').style.display = 'block';
+  const el = document.getElementById('errorMsg');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+
+// ── Copy ──
+function copyRow() {
+  if (!extractedData) return;
+  const d = extractedData;
+  // Tab-separated values for cols C through K
+  const vals = [
+    d.invoice_date          ?? '',
+    d.total_gas_gallons     ?? '',
+    d.total_diesel_gallons  ?? '',
+    d.ppd                   ?? '',
+    '',                              // Split lot — blank
+    d.texas_gas_tax         ?? '',
+    d.texas_diesel_tax      ?? '',
+    d.fed_gas_tax           ?? '',
+    d.fed_diesel_tax        ?? '',
+  ];
+  const tsv = vals.join('\t');
+  navigator.clipboard.writeText(tsv).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.classList.add('copied');
+    btn.querySelector('.btn-text').textContent = '✓ Copied! Now click your cell in Excel and paste';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.querySelector('.btn-text').textContent = '⌘ Copy Row to Clipboard';
+    }, 3000);
+  });
+}
+
+// ── Reset ──
+function reset() {
+  extractedData = null;
+  document.getElementById('resultPanel').style.display = 'none';
+  document.getElementById('dropZone').style.display = 'block';
+  document.getElementById('resetLink').style.display = 'none';
+  document.getElementById('pdfInput').value = '';
+  hideError();
+}
+</script>
+</body>
+</html>
