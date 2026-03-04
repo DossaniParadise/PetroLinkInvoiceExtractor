@@ -718,7 +718,8 @@ function downloadExcel() {
       }
     }
 
-    setCell(2, f.date);      // C = Date
+    // Date must always be a string — parseFloat('1/21/26') = 1, so bypass setCell
+    if (f.date) { const da = XLSX.utils.encode_cell({r:rowIdx,c:2}); ws[da] = {t:'s',v:f.date}; } // C = Date
     setCell(3, f.gas);       // D = Total Gas
     setCell(4, f.diesel);    // E = Total Diesel
     setCell(5, f.ppd);       // F = PPD
